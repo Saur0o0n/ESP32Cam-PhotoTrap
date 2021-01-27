@@ -1,7 +1,7 @@
 /*
 ** ESP32Cam PhotoTrap
 **
-** Last update: 2021.01.22 by Adrian (Sauron) Siemieniak
+** Last update: v0.2 - 2021.01.25 by Adrian (Sauron) Siemieniak
 **
 ** As a board choose Wemos D1 Mini ESP32 (not ESP32 Cam)
 **
@@ -119,19 +119,52 @@ void updateFromFS(fs::FS &fs) {
    }
 }
 
+void blink_red(uint8_t del=200){
+  
+  // Blink red diod
+  digitalWrite(33, LOW);
+  delay(del);
+  digitalWrite(33, HIGH);
+  delay(del);
+}
+
 /*
 ** Since it's a photo trap, and device should be working all the time without user - try to "heal" the problem with a bit of wait and reboot. In normal circumtances this should be halt.
 */
-void rebootEspWithReason(String reason){
+void rebootEspWithReason(String reason, byte err=4){
     Serial.println(reason);
-    for(byte a=0; a<20; a++){
+    delay(1000);
+    for(byte a=0; a<err; a++){
         // Red diode on/off to see the error
-       digitalWrite(33, LOW);
-       delay(500);
-       digitalWrite(33, HIGH);
-       delay(500);
+       blink_red(500);
     }
     ESP.restart();
+}
+
+void set_camera_options(){
+  sensor_t * s = esp_camera_sensor_get();
+  s->set_brightness(s, 0);     // -2 to 2
+  s->set_contrast(s, 0);       // -2 to 2
+  s->set_saturation(s, 0);     // -2 to 2
+  s->set_special_effect(s, 0); // 0 to 6 (0 - No Effect, 1 - Negative, 2 - Grayscale, 3 - Red Tint, 4 - Green Tint, 5 - Blue Tint, 6 - Sepia)
+  s->set_whitebal(s, 1);       // 0 = disable , 1 = enable
+  s->set_awb_gain(s, 1);       // 0 = disable , 1 = enable
+  s->set_wb_mode(s, 0);        // 0 to 4 - if awb_gain enabled (0 - Auto, 1 - Sunny, 2 - Cloudy, 3 - Office, 4 - Home)
+  s->set_exposure_ctrl(s, 1);  // 0 = disable , 1 = enable
+  s->set_aec2(s, 0);           // 0 = disable , 1 = enable
+  s->set_ae_level(s, 0);       // -2 to 2
+  s->set_aec_value(s, 300);    // 0 to 1200
+  s->set_gain_ctrl(s, 1);      // 0 = disable , 1 = enable
+  s->set_agc_gain(s, 0);       // 0 to 30
+  s->set_gainceiling(s, (gainceiling_t)0);  // 0 to 6
+  s->set_bpc(s, 0);            // 0 = disable , 1 = enable
+  s->set_wpc(s, 1);            // 0 = disable , 1 = enable
+  s->set_raw_gma(s, 1);        // 0 = disable , 1 = enable
+  s->set_lenc(s, 1);           // 0 = disable , 1 = enable
+  s->set_hmirror(s, 0);        // 0 = disable , 1 = enable
+  s->set_vflip(s, 0);          // 0 = disable , 1 = enable
+  s->set_dcw(s, 1);            // 0 = disable , 1 = enable
+  s->set_colorbar(s, 0);       // 0 = disable , 1 = enable
 }
 
 void setup() {
@@ -169,17 +202,17 @@ char filename[32];
   // Enable red diode
   pinMode(33, OUTPUT);
   
-  pinMode(4, INPUT);
-  digitalWrite(4, LOW);
+  //pinMode(4, INPUT);
+  //digitalWrite(4, LOW);
   rtc_gpio_hold_dis(GPIO_NUM_4);
  
   if(psramFound()){
     config.frame_size = FRAMESIZE_UXGA; // FRAMESIZE_ + QVGA|CIF|VGA|SVGA|XGA|SXGA|UXGA
-    config.jpeg_quality = 10;
+    config.jpeg_quality = 2;
     config.fb_count = 2;
   } else {
     config.frame_size = FRAMESIZE_SVGA;
-    config.jpeg_quality = 12;
+    config.jpeg_quality = 10;
     config.fb_count = 1;
   }
  
@@ -187,10 +220,12 @@ char filename[32];
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
     Serial.printf("Camera init failed with error 0x%x", err);
-    rebootEspWithReason("Camera init failed with error");
+    rebootEspWithReason("Camera init failed with error",6);
     return;
   }
-  
+
+  set_camera_options();
+    
   camera_fb_t * fb = NULL;
 
   // Red diode on
@@ -198,7 +233,7 @@ char filename[32];
   // Take Picture with Camera
   fb = esp_camera_fb_get();  
   if(!fb) {
-    rebootEspWithReason("Camera capture failed");
+    rebootEspWithReason("Camera capture failed",7);
     return;
   }
   // Disable red diod
@@ -232,13 +267,13 @@ char filename[32];
   Serial.println("Starting SD Card");
  
   if(!SD_MMC.begin()){
-    rebootEspWithReason("Failed to start SD interface");
+    rebootEspWithReason("Failed to start SD interface",8);
     return;
   }
  
   uint8_t cardType = SD_MMC.cardType();
   if(cardType == CARD_NONE){
-    rebootEspWithReason("Card Mount Failed");
+    rebootEspWithReason("Card Mount Failed",9);
     return;
   }
 
@@ -254,7 +289,7 @@ char filename[32];
  
   File file = fs.open(path.c_str(), FILE_WRITE);
   if(!file){
-    rebootEspWithReason("Failed to open file in writing mode");
+    rebootEspWithReason("Failed to open file in writing mode",10);
     return;
   }
   else {
@@ -269,22 +304,19 @@ char filename[32];
   delay(100);
   
   // Turns off the ESP32-CAM white on-board LED (flash) connected to GPIO 4
-  pinMode(4, OUTPUT);
-  digitalWrite(4, LOW);
-
-  delay(900);
+  //pinMode(4, OUTPUT);
+  //digitalWrite(4, LOW);
   
-  rtc_gpio_hold_en(GPIO_NUM_4);
-
-  esp_sleep_enable_ext0_wakeup(GPIO_NUM_13, 0);
- 
   Serial.println("Going to sleep now");
+  delay(500);  // this is to flush serial and keep the end part working - do not lower this!
+  
   Serial.end();
   // Blink red diod
-  digitalWrite(33, LOW);
-  delay(200);
-  // Disable red diod
-  digitalWrite(33, HIGH);
+  blink_red(150);
+  blink_red(150);
+  rtc_gpio_hold_en(GPIO_NUM_4);
+  esp_sleep_enable_ext0_wakeup(GPIO_NUM_13, 0);
+  delay(200); // wait for serial end, gpio setup etc.
 
   esp_deep_sleep_start();
 } 

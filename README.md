@@ -8,8 +8,30 @@ I've also wanted to have time, when picture was taken, so I've used DS3231 chip 
 
 ## Features
 - uses DS3231 to name files with date/time (also sets system time - so file timestamp is also valid), as a bonus - it also measures temperature
-- removed white LED - it made the whole ESP32Cam unstable (I've removed transistor - not the led itself - I thought it's gone be easier this way to rever changes)
-- added Red led to blink when pictures is taken, when ESP32 shut's off and when there is an error
+- removed white LED - it made the whole ESP32Cam unstable (I've removed transistor - not the led itself - I thought it's gone be easier this way to revert changes)
+- added Red led to blink when pictures is taken, when ESP32 shuts off and when there is an error
 - added Yellow led to see when microwave sensor is triggered
 - firmware can be updated by the .bin file on the SD card (it's much easier this way)
 - it does not hang on errors - tries wait and reboot (it helps sometimes)
+- it shows errors with blinking
+
+## Connecting
+Connect DS3231 to ESP32Cam pins 14,15 (shared with MMC)
+Connect RCWL-0516 output pin, to ESP32Cam gpio13 over transistor
+... this section is not finished :)
+
+## Blinking
+
+### Yelow LED
+- yellow light on, microwave sensor is triggered
+
+### Red LED
+- on >1s picture is taken (right at that moment)
+- 2 fast (150ms) flashes, devices went to deep sleep
+- 4 slower flashes - unknown error
+- 6 slower flashes - Camera init failed with error: Failed to initialize camera, check connections; check camera
+- 7 slower flashes - Picture capture failed: Could not take picture, check camera
+- 8 slower flashes - Failed to start SD interface: No sdcard, connection to SD failed
+- 9 slower flashes - Card Mount Failed: Wrong SD card type or something wrong with FS on sdcard
+- 10 slower flashes - Failed to open file in writing mode: Failed to write picture to sdcard: Card can be full or corrupted
+
