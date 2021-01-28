@@ -23,14 +23,17 @@
 #include <sys/time.h>
 // define the number of bytes you want to access
 #define EEPROM_SIZE 1
+RTC_DATA_ATTR int bootCount = 0;
 
+// If you want picture to be taken as fast as possible, put here 0. If you want to auto white balance and exposition work - use 4000+ (4s +)
+#define PICTURE_AWB_DELAY 4000
+
+// DS3231 stuff
 #define RTC_ADDR 0x57
-
 DS323x rtc;
 const int I2C_SCL = 15;
 const int I2C_SCA = 14;
 
-RTC_DATA_ATTR int bootCount = 0;
 
 // Pin definition for CAMERA_MODEL_AI_THINKER
 #define PWDN_GPIO_NUM     32
@@ -119,6 +122,8 @@ void updateFromFS(fs::FS &fs) {
    }
 }
 
+// Blink RED led to informa about different tasks
+//
 void blink_red(uint8_t del=200){
   
   // Blink red diod
@@ -138,9 +143,17 @@ void rebootEspWithReason(String reason, byte err=4){
         // Red diode on/off to see the error
        blink_red(500);
     }
+    Serial.println("Going to light sleep...");
+    delay(200);
+    esp_sleep_enable_timer_wakeup(10000000); //sleep 10 seconds - cool down
+    esp_light_sleep_start();    // we could go to deep sleep here, but ESP.restart is more "robust" for fixing errors, then just deepsleep wakeup
+    Serial.println("Light sleep wakeup...");
+    delay(200);
     ESP.restart();
 }
 
+// Set camera settings, one provided below are (in my taste) most efficient for further processing
+//
 void set_camera_options(){
   sensor_t * s = esp_camera_sensor_get();
   s->set_brightness(s, 0);     // -2 to 2
@@ -151,19 +164,19 @@ void set_camera_options(){
   s->set_awb_gain(s, 1);       // 0 = disable , 1 = enable
   s->set_wb_mode(s, 0);        // 0 to 4 - if awb_gain enabled (0 - Auto, 1 - Sunny, 2 - Cloudy, 3 - Office, 4 - Home)
   s->set_exposure_ctrl(s, 1);  // 0 = disable , 1 = enable
-  s->set_aec2(s, 0);           // 0 = disable , 1 = enable
+  s->set_aec2(s, 1);           // Auto EXP DSP 0 = disable , 1 = enable
   s->set_ae_level(s, 0);       // -2 to 2
   s->set_aec_value(s, 300);    // 0 to 1200
-  s->set_gain_ctrl(s, 1);      // 0 = disable , 1 = enable
+  s->set_gain_ctrl(s, 0);      // 0 = disable , 1 = enable
   s->set_agc_gain(s, 0);       // 0 to 30
   s->set_gainceiling(s, (gainceiling_t)0);  // 0 to 6
   s->set_bpc(s, 0);            // 0 = disable , 1 = enable
   s->set_wpc(s, 1);            // 0 = disable , 1 = enable
   s->set_raw_gma(s, 1);        // 0 = disable , 1 = enable
-  s->set_lenc(s, 1);           // 0 = disable , 1 = enable
+  s->set_lenc(s, 0);           // 0 = disable , 1 = enable
   s->set_hmirror(s, 0);        // 0 = disable , 1 = enable
   s->set_vflip(s, 0);          // 0 = disable , 1 = enable
-  s->set_dcw(s, 1);            // 0 = disable , 1 = enable
+  s->set_dcw(s, 0);            // 0 = disable , 1 = enable
   s->set_colorbar(s, 0);       // 0 = disable , 1 = enable
 }
 
@@ -204,12 +217,12 @@ char filename[32];
   
   //pinMode(4, INPUT);
   //digitalWrite(4, LOW);
-  rtc_gpio_hold_dis(GPIO_NUM_4);
+  //rtc_gpio_hold_dis(GPIO_NUM_4);
  
   if(psramFound()){
     config.frame_size = FRAMESIZE_UXGA; // FRAMESIZE_ + QVGA|CIF|VGA|SVGA|XGA|SXGA|UXGA
     config.jpeg_quality = 2;
-    config.fb_count = 2;
+    config.fb_count = 1;  // All examples have 2, but since we are NOT streaming but taking pictures - this is acctualy better (https://github.com/espressif/esp32-camera/blob/master/README.md#important-to-remember)
   } else {
     config.frame_size = FRAMESIZE_SVGA;
     config.jpeg_quality = 10;
@@ -231,9 +244,12 @@ char filename[32];
   // Red diode on
   digitalWrite(33, LOW);
   // Take Picture with Camera
+
+  delay(PICTURE_AWB_DELAY);    // Wait for AWB and AE
+  
   fb = esp_camera_fb_get();  
   if(!fb) {
-    rebootEspWithReason("Camera capture failed",7);
+    rebootEspWithReason("Picture capture failed",7);
     return;
   }
   // Disable red diod
@@ -249,19 +265,17 @@ char filename[32];
   setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);     // Central European Time
   tzset();
   struct timeval tv;
-  Serial.print("Generated filename is: ");
   if(isI2CDeviceConnected(RTC_ADDR)){
     DateTime now = rtc.now();
     tv.tv_sec = now.unixtime()-2092; // Set seconds from epoch in tv structure (don't know why - but my ESP32 is around 35min ahead the clock - tha'ts why - 2092
     //Serial.printf("%d:%d:%2.d %d.%d %.2f\n",now.hour(),now.minute(),now.second(),now.day(),now.month(),rtc.temperature());
     sprintf(filename,"/%02d-%02d_h%02dm%02ds%02d_%.0fc_%d.jpg",now.month(),now.day(),now.hour(),now.minute(),now.second(),rtc.temperature(),pictureNumber);
-    Serial.println(filename);
   }else{
     tv.tv_sec = 1611490902; // https://www.epochconverter.com/
     Serial.println("Failed to connect to DS3231");
     sprintf(filename,"/%d.jpg",pictureNumber);
-    Serial.println(filename);
   }
+  Serial.printf("Generated filename is: %s\n",filename);
   settimeofday(&tv, NULL);    // set the current time of the esp to one from ds or from config
   
   Serial.println("Starting SD Card");
@@ -301,22 +315,22 @@ char filename[32];
   file.close();
   esp_camera_fb_return(fb);
   
-  delay(100);
-  
   // Turns off the ESP32-CAM white on-board LED (flash) connected to GPIO 4
   //pinMode(4, OUTPUT);
   //digitalWrite(4, LOW);
   
   Serial.println("Going to sleep now");
+  Serial.flush();
+  Serial.end();
   delay(500);  // this is to flush serial and keep the end part working - do not lower this!
   
-  Serial.end();
   // Blink red diod
   blink_red(150);
   blink_red(150);
-  rtc_gpio_hold_en(GPIO_NUM_4);
+  //rtc_gpio_hold_en(GPIO_NUM_4);
   esp_sleep_enable_ext0_wakeup(GPIO_NUM_13, 0);
-  delay(200); // wait for serial end, gpio setup etc.
+  
+  delay(200); // wait for it... :)
 
   esp_deep_sleep_start();
 } 

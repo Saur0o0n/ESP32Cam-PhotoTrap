@@ -15,6 +15,14 @@ I've also wanted to have time, when picture was taken, so I've used DS3231 chip 
 - it does not hang on errors - tries wait and reboot (it helps sometimes)
 - it shows errors with blinking
 
+## BOM
+- ESP32 Cam board with compatible camera like OV2640
+- DS3231 RTC board
+- Microwave (RCWL-0516) or PIR sensor with trigger pin
+- power supply. I've used 3Ah cellphone battery, Li-ion protection (charge/discharge) board and step-up board to have 5V
+- some diodes, switch and hermetic case
+- also some resistors, capacitors etc.
+
 ## Connecting
 Connect DS3231 to ESP32Cam pins 14,15 (shared with MMC)
 Connect RCWL-0516 output pin, to ESP32Cam gpio13 over transistor
