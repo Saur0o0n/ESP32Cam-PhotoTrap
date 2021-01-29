@@ -9,7 +9,6 @@
 ** Old project details at https://RandomNerdTutorials.com/esp32-cam-pir-motion-detector-photo-capture/
 ** 
 */
- 
 #include "esp_camera.h"
 #include "Arduino.h"
 #include "FS.h"                // SD Card ESP32
@@ -21,12 +20,17 @@
 #include <DS323x.h>
 #include <Update.h>
 #include <sys/time.h>
+#include <time.h>
+#include <stdio.h>
+
 // define the number of bytes you want to access
 #define EEPROM_SIZE 1
 RTC_DATA_ATTR int bootCount = 0;
 
-// If you want picture to be taken as fast as possible, put here 0. If you want to auto white balance and exposition work - use 4000+ (4s +)
-#define PICTURE_AWB_DELAY 4000
+const uint8_t picture_awb_delay = 2000; // delay before taking first photo, this allows sensor to do white ballance and exposure measurements
+                                        // If you want picture to be taken as fast as possible, put here 0. If you want to auto white balance and exposition work - use 4000+ (4s +)
+const byte picture_count = 3;           // how many pictures should be takend in each boot cycle
+const uint8_t picture_delay = 1000;     // ms delay between pictures
 
 // DS3231 stuff
 #define RTC_ADDR 0x57
@@ -152,6 +156,20 @@ void rebootEspWithReason(String reason, byte err=4){
     ESP.restart();
 }
 
+// Convert compile time to system time 
+time_t cvt_date(char const *date, char const *time){
+    char s_month[5];
+    int year;
+    struct tm t;
+    static const char month_names[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
+    sscanf(date, "%s %d %d", s_month, &t.tm_mday, &year);
+    sscanf(time, "%2d %*c %2d %*c %2d", &t.tm_hour, &t.tm_min, &t.tm_sec);
+    // Find where is s_month in month_names. Deduce month value.
+    t.tm_mon = (strstr(month_names, s_month) - month_names) / 3 + 1;    
+    t.tm_year = year - 1900;    
+    return mktime(&t);
+}
+
 // Set camera settings, one provided below are (in my taste) most efficient for further processing
 //
 void set_camera_options(){
@@ -180,8 +198,12 @@ void set_camera_options(){
   s->set_colorbar(s, 0);       // 0 = disable , 1 = enable
 }
 
+
+
 void setup() {
-char filename[32];
+char fileName[32];
+struct timeval tv;
+float temp=-100;
 
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector
   Serial.begin(115200);
@@ -213,15 +235,16 @@ char filename[32];
   config.pixel_format = PIXFORMAT_JPEG;
 
   // Enable red diode
+  digitalWrite(33, HIGH); // off
   pinMode(33, OUTPUT);
-  
+    
   //pinMode(4, INPUT);
   //digitalWrite(4, LOW);
   //rtc_gpio_hold_dis(GPIO_NUM_4);
  
   if(psramFound()){
     config.frame_size = FRAMESIZE_UXGA; // FRAMESIZE_ + QVGA|CIF|VGA|SVGA|XGA|SXGA|UXGA
-    config.jpeg_quality = 2;
+    config.jpeg_quality = 5;
     config.fb_count = 1;  // All examples have 2, but since we are NOT streaming but taking pictures - this is acctualy better (https://github.com/espressif/esp32-camera/blob/master/README.md#important-to-remember)
   } else {
     config.frame_size = FRAMESIZE_SVGA;
@@ -239,98 +262,108 @@ char filename[32];
 
   set_camera_options();
     
-  camera_fb_t * fb = NULL;
 
-  // Red diode on
-  digitalWrite(33, LOW);
-  // Take Picture with Camera
-
-  delay(PICTURE_AWB_DELAY);    // Wait for AWB and AE
-  
-  fb = esp_camera_fb_get();  
-  if(!fb) {
-    rebootEspWithReason("Picture capture failed",7);
-    return;
-  }
-  // Disable red diod
-  digitalWrite(33, HIGH);
-
-  // initialize EEPROM with predefined size
-  EEPROM.begin(EEPROM_SIZE);
-  pictureNumber = EEPROM.read(0) + 1;
-  
   rtc.attach(Wire);
-
   // Time/date stuff - to generate proper filename
-  setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);     // Central European Time
-  tzset();
-  struct timeval tv;
+  //setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);     // Central European Time
+  //tzset();
+
   if(isI2CDeviceConnected(RTC_ADDR)){
     DateTime now = rtc.now();
     tv.tv_sec = now.unixtime()-2092; // Set seconds from epoch in tv structure (don't know why - but my ESP32 is around 35min ahead the clock - tha'ts why - 2092
-    //Serial.printf("%d:%d:%2.d %d.%d %.2f\n",now.hour(),now.minute(),now.second(),now.day(),now.month(),rtc.temperature());
-    sprintf(filename,"/%02d-%02d_h%02dm%02ds%02d_%.0fc_%d.jpg",now.month(),now.day(),now.hour(),now.minute(),now.second(),rtc.temperature(),pictureNumber);
+    Serial.printf("Time from DS3231 is %d:%d:%2.d %d.%d %.2f\n",now.hour(),now.minute(),now.second(),now.day(),now.month(),rtc.temperature());
+    temp=rtc.temperature();
+    //sprintf(filename,"/%02d-%02d_h%02dm%02ds%02d_%.0fc_%d.jpg",now.month(),now.day(),now.hour(),now.minute(),now.second(),rtc.temperature(),pictureNumber);
   }else{
-    tv.tv_sec = 1611490902; // https://www.epochconverter.com/
-    Serial.println("Failed to connect to DS3231");
-    sprintf(filename,"/%d.jpg",pictureNumber);
+    //tv.tv_sec = 1611490902; // https://www.epochconverter.com/
+    tv.tv_sec = cvt_date(__DATE__, __TIME__)+1500;  // ESP32 was 25min late so I've added it
+    Serial.println("Failed to connect to DS3231 - setting time from script compilation time");
   }
-  Serial.printf("Generated filename is: %s\n",filename);
   settimeofday(&tv, NULL);    // set the current time of the esp to one from ds or from config
-  
-  Serial.println("Starting SD Card");
- 
+
+  Serial.println("Starting SD Card...");
   if(!SD_MMC.begin()){
     rebootEspWithReason("Failed to start SD interface",8);
     return;
   }
- 
   uint8_t cardType = SD_MMC.cardType();
   if(cardType == CARD_NONE){
     rebootEspWithReason("Card Mount Failed",9);
     return;
   }
-
   // Try to do the upgrade - if there is update.bin file
   updateFromFS(SD_MMC);
+  
+  
+  Serial.println("Delay start");
+  delay(picture_awb_delay);    // Wait for AWB and AE
+  Serial.println("Delay end");
+
+  // initialize EEPROM with predefined size
+  EEPROM.begin(EEPROM_SIZE);
+  pictureNumber = EEPROM.read(0);
 
 
   // Path where new picture will be saved in SD Card
-  String path = String(filename);
- 
+  char fpath[50];
+  struct tm timeinfo;
   fs::FS &fs = SD_MMC;
-  Serial.printf("Picture file name is: %s\n", path.c_str());
+  camera_fb_t *fb = NULL;
+  File file;
+
+  for(byte pic=0; pic < picture_count; pic++){
+    // Red diode on
+    digitalWrite(33, LOW);
+    // Take Picture with Camera
+    fb = esp_camera_fb_get();
+
+    if(!fb) {
+      rebootEspWithReason("Picture capture failed",7);
+      return;
+    }
+    // Disable red diod
+    digitalWrite(33, HIGH);
+
+    getLocalTime(&timeinfo);
+    strftime(fileName, 20, "/%y-%m-%d_%H.%M.%S", &timeinfo);
+    pictureNumber++;
+    Serial.printf("Generated filename is: %s\n",fileName);
+    if(temp>-50) sprintf(fpath,"%s_%.1f_%d.jpg", fileName, temp, pictureNumber);
+    else sprintf(fpath,"%s_%d.jpg", fileName, pictureNumber);
+
+    Serial.printf("Picture file name is: %s\n", fpath);
  
-  File file = fs.open(path.c_str(), FILE_WRITE);
-  if(!file){
-    rebootEspWithReason("Failed to open file in writing mode",10);
-    return;
+    file = fs.open(fpath, FILE_WRITE);
+    if(!file){
+      rebootEspWithReason("Failed to open file in writing mode",10);
+      return;
+    }else {
+      Serial.printf("Saved file to path: %s\n", fpath);
+      file.write(fb->buf, fb->len); // payload (image), payload length
+
+    }
+    file.close();
+    esp_camera_fb_return(fb);
   }
-  else {
-    file.write(fb->buf, fb->len); // payload (image), payload length
-    Serial.printf("Saved file to path: %s\n", path.c_str());
-    EEPROM.write(0, pictureNumber);
-    EEPROM.commit();
-  }
-  file.close();
-  esp_camera_fb_return(fb);
-  
+
+  EEPROM.write(0, pictureNumber);
+  EEPROM.commit();
+    
   // Turns off the ESP32-CAM white on-board LED (flash) connected to GPIO 4
   //pinMode(4, OUTPUT);
   //digitalWrite(4, LOW);
   
   Serial.println("Going to sleep now");
   Serial.flush();
-  Serial.end();
-  delay(500);  // this is to flush serial and keep the end part working - do not lower this!
   
   // Blink red diod
   blink_red(150);
   blink_red(150);
   //rtc_gpio_hold_en(GPIO_NUM_4);
   esp_sleep_enable_ext0_wakeup(GPIO_NUM_13, 0);
-  
-  delay(200); // wait for it... :)
+
+  //Serial.end();
+  delay(500); // this is to flush serial and keep the end part working - do not lower this!
 
   esp_deep_sleep_start();
 } 

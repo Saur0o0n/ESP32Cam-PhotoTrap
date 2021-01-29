@@ -4,22 +4,24 @@ I wanted to have some cheap (mostly because it can be stolen :( ) way to take so
 ESP32Cam looks like a perfect thinker board for the purpose, sadly pictures are crappy as hell, but it will have to do.
 
 I've found some basic approach to the idea here (https://randomnerdtutorials.com/esp32-cam-pir-motion-detector-photo-capture/) - it work's but I found it not reliable enough and lacking. Anyway my first approach with IR sensor failed because of the snow, perhaps it could be tuned to some extend, but I've switch to microwave sensor.
-I've also wanted to have time, when picture was taken, so I've used DS3231 chip from my box of goodies. This required some major changes in the code. And then more changes followed.
+I've also wanted to have timestamp, when the picture was taken, so I've used DS3231 chip from "my box of goodies". This required some major changes in the code. And then more changes followed.
 
-## Features
-- uses DS3231 to name files with date/time (also sets system time - so file timestamp is also valid), as a bonus - it also measures temperature
-- removed white LED - it made the whole ESP32Cam unstable (I've removed transistor - not the led itself - I thought it's gone be easier this way to revert changes)
-- added Red led to blink when pictures is taken, when ESP32 shuts off and when there is an error
-- added Yellow led to see when microwave sensor is triggered
-- firmware can be updated by the .bin file on the SD card (it's much easier this way)
-- it does not hang on errors - tries wait and reboot (it helps sometimes)
-- it shows errors with blinking
+## Features/customizations
+- Uses DS3231 to name files with date/time (also sets system time - so file timestamp is also valid), as a bonus - it also measures temperature. It's not required - it still work without it.
+- I've removed white LED - it made the whole ESP32Cam module unstable (I've removed transistor - not the led itself - I thought it's gone be easier this way to revert changes)
+- Added Red led to blink when pictures is taken, when ESP32 shuts off and when there is an error - this led is present on board, I've just extended it outside.
+- Added Yellow led to see when microwave sensor is triggered - on the transistor ground line.
+- Added ability to updated firmware by the .bin file on the SD card (it's much easier this way)
+- Change error handling so t does not hang on errors - tries wait/sleep and reboot (it helps with most camera, MMC bus errors)
+- It shows errors with blinking - so you can diagnose it from distance (and without serial)
+- It's able to take multiple pictures at one trigger
+- It has all the cam config parameters defined and also delays for AWB and AG to work
 
 ## BOM
 - ESP32 Cam board with compatible camera like OV2640
 - DS3231 RTC board
 - Microwave (RCWL-0516) or PIR sensor with trigger pin
-- power supply. I've used 3Ah cellphone battery, Li-ion protection (charge/discharge) board and step-up board to have 5V
+- power supply. I've used old 3Ah cellphone battery, Li-ion protection (charge/discharge) board and step-up board to have 5V
 - some diodes, switch and hermetic case
 - also some resistors, capacitors etc.
 
