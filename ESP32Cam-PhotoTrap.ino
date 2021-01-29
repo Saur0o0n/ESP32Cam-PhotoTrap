@@ -1,7 +1,7 @@
 /*
 ** ESP32Cam PhotoTrap
 **
-** Last update: v0.2 - 2021.01.25 by Adrian (Sauron) Siemieniak
+** Last update: v0.3 - 2021.01.29 by Adrian (Sauron) Siemieniak
 **
 ** As a board choose Wemos D1 Mini ESP32 (not ESP32 Cam)
 **
@@ -20,17 +20,19 @@
 #include <DS323x.h>
 #include <Update.h>
 #include <sys/time.h>
-#include <time.h>
 #include <stdio.h>
+//#include <WiFi.h>
+#include <esp_wifi.h>
+#include <esp_bt.h>
 
 // define the number of bytes you want to access
 #define EEPROM_SIZE 1
-RTC_DATA_ATTR int bootCount = 0;
 
 const uint8_t picture_awb_delay = 2000; // delay before taking first photo, this allows sensor to do white ballance and exposure measurements
                                         // If you want picture to be taken as fast as possible, put here 0. If you want to auto white balance and exposition work - use 4000+ (4s +)
+                                        // or use sacrificial pictures like in default settings - 1st photo after 2s, second 3s, third 4s. Third one should be the best in terms of AWB/AE
 const byte picture_count = 3;           // how many pictures should be takend in each boot cycle
-const uint8_t picture_delay = 1000;     // ms delay between pictures
+const uint8_t picture_delay = 1000;     // ms delay between taking pictures (does not count time to take picture itself)
 
 // DS3231 stuff
 #define RTC_ADDR 0x57
@@ -210,6 +212,10 @@ float temp=-100;
 
   Serial.setDebugOutput(true);
 
+  // disable wifi/bt
+  esp_wifi_stop();
+  esp_bt_controller_disable();
+  
   Wire.begin(I2C_SCA, I2C_SCL);
   
   camera_config_t config;
