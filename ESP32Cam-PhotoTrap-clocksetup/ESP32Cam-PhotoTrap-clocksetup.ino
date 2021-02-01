@@ -90,6 +90,7 @@ char datetime[40];
   EEPROM.begin(EEPROM_SIZE);
   EEPROM.write(0, pictureNumber);
   EEPROM.commit();
+  Serial.printf("Clock setup finished!\n");
 }
 
 void loop() {

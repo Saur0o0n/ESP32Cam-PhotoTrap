@@ -1,7 +1,7 @@
 /*
 ** ESP32Cam PhotoTrap
 **
-** Last update: v0.3 - 2021.01.29 by Adrian (Sauron) Siemieniak
+** Last update: v0.3 - 2021.01.30 by Adrian (Sauron) Siemieniak
 **
 ** As a board choose Wemos D1 Mini ESP32 (not ESP32 Cam)
 **
@@ -21,7 +21,6 @@
 #include <Update.h>
 #include <sys/time.h>
 #include <stdio.h>
-//#include <WiFi.h>
 #include <esp_wifi.h>
 #include <esp_bt.h>
 
@@ -195,7 +194,7 @@ void set_camera_options(){
   s->set_raw_gma(s, 1);        // 0 = disable , 1 = enable
   s->set_lenc(s, 0);           // 0 = disable , 1 = enable
   s->set_hmirror(s, 0);        // 0 = disable , 1 = enable
-  s->set_vflip(s, 0);          // 0 = disable , 1 = enable
+  s->set_vflip(s, 1);          // 0 = disable , 1 = enable
   s->set_dcw(s, 0);            // 0 = disable , 1 = enable
   s->set_colorbar(s, 0);       // 0 = disable , 1 = enable
 }
@@ -213,8 +212,8 @@ float temp=-100;
   Serial.setDebugOutput(true);
 
   // disable wifi/bt
-  esp_wifi_stop();
-  esp_bt_controller_disable();
+  //esp_wifi_stop();
+  //esp_bt_controller_disable();
   
   Wire.begin(I2C_SCA, I2C_SCL);
   

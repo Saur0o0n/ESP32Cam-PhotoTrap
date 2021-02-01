@@ -25,10 +25,17 @@ I've also wanted to have timestamp, when the picture was taken, so I've used DS3
 - some diodes, switch and hermetic case
 - also some resistors, capacitors etc.
 
-## Connecting
+## Wiring
 Connect DS3231 to ESP32Cam pins 14,15 (shared with MMC)
 Connect RCWL-0516 output pin, to ESP32Cam gpio13 over transistor
 ... this section is not finished :)
+
+## Firmware installation
+After you've assembled the trap, you need to first setup the clock on DS3231. For this, there is separate sketch in GIT repository "ESP32Cam-PhotoTrap-clocksetup,ino". Change the "," in the name to "." and put it to separate folder. Arduino is reading all the .ino files to the project - that's why I've renamed it. And I did not wanted to create separate repo.
+Anyway, you have to set your WiFi SSID and password. It would be also good to change (depending where you live) "gmtOffset_sec".
+After you upload the sketch, look on the serial. If everything is OK, you should see that clock on DS3231 is setup to one from NTP server.
+
+Now you need to upload proper ESP32Cam-PhotoTrap program.
 
 ## Blinking
 
